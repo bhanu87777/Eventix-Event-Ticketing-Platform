@@ -16,23 +16,23 @@ Event Ticketing Platform/
 ```mermaid
 flowchart LR
   subgraph Phone["📱 Android app (Kotlin + Compose)"]
-    UI["Compose UI · MVVM\none ViewModel per screen"]
-    Repo["Repository\n(Retrofit + OkHttp)"]
-    DS["DataStore\n(JWT)"]
+    UI["Compose UI · MVVM<br/>one ViewModel per screen"]
+    Repo["Repository<br/>(Retrofit + OkHttp)"]
+    DS["DataStore<br/>(JWT)"]
     UI --> Repo
     Repo --> DS
   end
 
   subgraph API["🖥️ Backend (Node + Express)"]
-    R["Routers:\nauth · events · tickets"]
-    T["tickets.js\nrace-safe purchase + check-in"]
+    R["Routers:<br/>auth · events · tickets"]
+    T["tickets.js<br/>race-safe purchase + check-in"]
     R --> T
   end
 
-  PG[("🐘 PostgreSQL\nusers · events · tickets · purchases")]
+  PG[("🐘 PostgreSQL<br/>users · events · tickets · purchases")]
 
   Repo -- "REST + JWT" --> R
-  T -- "SELECT … FOR UPDATE\nCHECK (tickets_sold <= capacity)" --> PG
+  T -- "SELECT FOR UPDATE +<br/>CHECK tickets_sold ≤ capacity" --> PG
 ```
 
 The Android client talks to the REST API over HTTP with a JWT bearer token
@@ -52,16 +52,16 @@ sequenceDiagram
   participant A as Buyer A
   participant B as Buyer B
   participant API as tickets.js
-  participant DB as PostgreSQL (event row)
+  participant DB as PostgreSQL
 
-  A->>API: POST /events/42/purchase (Idempotency-Key: k1)
-  B->>API: POST /events/42/purchase (Idempotency-Key: k2)
-  API->>DB: BEGIN; SELECT … FOR UPDATE (event 42)
-  Note over DB: A acquires the row lock;<br/>B blocks on the same row
-  API->>DB: capacity check + INSERT ticket + tickets_sold++
+  A->>API: POST /events/42/purchase (key k1)
+  B->>API: POST /events/42/purchase (key k2)
+  API->>DB: BEGIN then SELECT ... FOR UPDATE (event 42)
+  Note over DB: A acquires the row lock,<br/>B blocks on the same row
+  API->>DB: capacity check + INSERT ticket + increment tickets_sold
   API->>DB: COMMIT (lock released)
-  Note over DB: B now proceeds — sees updated tickets_sold
-  API->>DB: capacity check → SOLD OUT → 409
+  Note over DB: B now proceeds, sees updated count
+  API-->>B: SOLD OUT then 409
 ```
 
 | # | Layer | What it guarantees |

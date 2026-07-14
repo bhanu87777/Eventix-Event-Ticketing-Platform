@@ -58,17 +58,17 @@ hundreds of buyers tap *Buy* at the same instant.
 flowchart LR
   subgraph Phone["📱 Android app (Kotlin + Compose)"]
     UI["Compose UI · MVVM"]
-    Repo["Repository\n(Retrofit + OkHttp)"]
+    Repo["Repository<br/>(Retrofit + OkHttp)"]
     UI --> Repo
   end
   subgraph API["🖥️ Backend (Node + Express)"]
     R["Routers: auth · events · tickets"]
-    T["tickets.js — race-safe\npurchase + check-in"]
+    T["tickets.js — race-safe<br/>purchase + check-in"]
     R --> T
   end
   PG[("🐘 PostgreSQL")]
   Repo -- "REST + JWT" --> R
-  T -- "SELECT … FOR UPDATE\nCHECK (tickets_sold <= capacity)" --> PG
+  T -- "SELECT FOR UPDATE +<br/>CHECK tickets_sold ≤ capacity" --> PG
 ```
 
 ---
@@ -87,9 +87,9 @@ sequenceDiagram
 
   A->>API: POST /events/42/purchase
   B->>API: POST /events/42/purchase
-  API->>DB: BEGIN; SELECT … FOR UPDATE (event 42)
-  Note over DB: A locks the row;<br/>B waits on the same row
-  API->>DB: check capacity + INSERT ticket + tickets_sold++
+  API->>DB: BEGIN then SELECT ... FOR UPDATE (event 42)
+  Note over DB: A locks the row,<br/>B waits on the same row
+  API->>DB: check capacity + INSERT ticket + increment tickets_sold
   API->>DB: COMMIT (lock released)
   Note over DB: B resumes, sees new count
   API-->>B: 409 SOLD_OUT
