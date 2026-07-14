@@ -1,0 +1,10 @@
+node_modules/
+backend/pgdata/
+backend/.env
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/.kotlin/
+.tmp-ct/

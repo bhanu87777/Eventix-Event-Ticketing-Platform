@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Ticket body with notched sides -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,40 h44 a5,5 0 0 1 5,5 v3 a6,6 0 0 0 0,12 v3 a5,5 0 0 1 -5,5 h-44 a5,5 0 0 1 -5,-5 v-3 a6,6 0 0 0 0,-12 v-3 a5,5 0 0 1 5,-5 z" />
+    <!-- Perforation line -->
+    <path
+        android:strokeColor="#6D4DF2"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M63,44 L63,46 M63,50 L63,52 M63,56 L63,58 M63,62 L63,64" />
+</vector>
