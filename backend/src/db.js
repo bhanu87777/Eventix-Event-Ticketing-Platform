@@ -25,8 +25,14 @@ export async function initDb() {
   if (process.env.EMBEDDED_PG === '1') {
     await startEmbeddedPostgres();
   }
-  const sql = fs.readFileSync(path.join(ROOT, 'migrations', '001_init.sql'), 'utf8');
-  await pool.query(sql);
+  // Every migration is written to be idempotent (IF NOT EXISTS / ON CONFLICT
+  // DO NOTHING / guarded backfills), so the whole set re-runs on each boot —
+  // no tracking table needed. Files apply in sorted (numbered) order.
+  const dir = path.join(ROOT, 'migrations');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  for (const file of files) {
+    await pool.query(fs.readFileSync(path.join(dir, file), 'utf8'));
+  }
 }
 
 async function startEmbeddedPostgres() {

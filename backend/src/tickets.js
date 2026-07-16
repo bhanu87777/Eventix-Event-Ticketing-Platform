@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { Router } from 'express';
 import { pool } from './db.js';
 import { requireAuth, requireOrganizer } from './auth.js';
+import { passSeatToNextWaiter } from './inventory.js';
 
 export const ticketsRouter = Router();
 
@@ -41,100 +42,19 @@ const TICKET_SELECT = `
          e.title         AS "eventTitle",
          e.venue,
          e.starts_at     AS "startsAt",
-         e.image_url     AS "imageUrl"
-  FROM tickets t JOIN events e ON e.id = t.event_id`;
+         e.image_url     AS "imageUrl",
+         tt.name         AS "tierName",
+         tt.price_cents  AS "priceCents"
+  FROM tickets t
+  JOIN events e ON e.id = t.event_id
+  JOIN ticket_tiers tt ON tt.id = t.tier_id`;
 
 function ticketResponse(row) {
   return { ...row, qr: qrPayload(row.code) };
 }
 
-/**
- * POST /events/:id/purchase — the race-condition-safe seat sale.
- *
- * Concurrency strategy (pessimistic locking):
- *   1. BEGIN a transaction.
- *   2. SELECT ... FOR UPDATE the event row. Every concurrent purchase for the
- *      same event queues on this row lock — Postgres serializes them for us.
- *   3. Inside the lock: check remaining capacity, insert the ticket, and
- *      increment tickets_sold. No other transaction can interleave between
- *      the check and the write, which is exactly the check-then-act race
- *      that causes overselling.
- *   4. COMMIT releases the lock for the next buyer in line.
- *
- * Idempotency: clients send an Idempotency-Key header. Retrying the same key
- * (e.g. after a network timeout) returns the original ticket instead of
- * issuing a second one. The UNIQUE constraint on purchases.idempotency_key
- * makes this safe even if two retries race each other.
- */
-ticketsRouter.post('/events/:id/purchase', requireAuth, async (req, res) => {
-  const idempotencyKey = req.headers['idempotency-key'];
-  if (!idempotencyKey || typeof idempotencyKey !== 'string') {
-    return res.status(400).json({ error: 'Idempotency-Key header is required' });
-  }
-
-  const existing = await findPurchase(idempotencyKey);
-  if (existing) return res.json({ ticket: existing, replayed: true });
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const { rows: eventRows } = await client.query(
-      'SELECT id, capacity, tickets_sold FROM events WHERE id = $1 FOR UPDATE',
-      [req.params.id],
-    );
-    const event = eventRows[0];
-    if (!event) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Event not found' });
-    }
-    if (event.tickets_sold >= event.capacity) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'Sold out', code: 'SOLD_OUT' });
-    }
-
-    const code = crypto.randomBytes(10).toString('hex');
-    const { rows: ticketRows } = await client.query(
-      `INSERT INTO tickets (code, event_id, user_id) VALUES ($1, $2, $3) RETURNING id`,
-      [code, event.id, req.user.id],
-    );
-    await client.query('UPDATE events SET tickets_sold = tickets_sold + 1 WHERE id = $1', [
-      event.id,
-    ]);
-    await client.query(
-      `INSERT INTO purchases (idempotency_key, user_id, ticket_id) VALUES ($1, $2, $3)`,
-      [idempotencyKey, req.user.id, ticketRows[0].id],
-    );
-
-    await client.query('COMMIT');
-
-    // Reuse the client we already hold: fetching a second connection from the
-    // pool here would deadlock under load (every pooled client busy in this
-    // handler, each waiting for one more).
-    const { rows } = await client.query(`${TICKET_SELECT} WHERE t.id = $1`, [ticketRows[0].id]);
-    return res.status(201).json({ ticket: ticketResponse(rows[0]) });
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    if (err.code === '23505') {
-      // Two requests with the same idempotency key raced; the other one won.
-      const winner = await findPurchase(idempotencyKey);
-      if (winner) return res.json({ ticket: winner, replayed: true });
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
-});
-
-async function findPurchase(idempotencyKey) {
-  const { rows } = await pool.query(
-    `${TICKET_SELECT}
-     JOIN purchases p ON p.ticket_id = t.id
-     WHERE p.idempotency_key = $1`,
-    [idempotencyKey],
-  );
-  return rows[0] ? ticketResponse(rows[0]) : null;
-}
+// Ticket purchasing lives in orders.js (create → confirm); the legacy
+// POST /events/:id/purchase endpoint was replaced by that flow.
 
 ticketsRouter.get('/me/tickets', requireAuth, async (req, res) => {
   const { rows } = await pool.query(
@@ -142,6 +62,62 @@ ticketsRouter.get('/me/tickets', requireAuth, async (req, res) => {
     [req.user.id],
   );
   res.json({ tickets: rows.map(ticketResponse) });
+});
+
+/**
+ * POST /tickets/:id/cancel — attendee releases a seat.
+ * Runs under the event-row lock (see the invariant in orders.js): the freed
+ * seat is either held for the next waitlisted user or returned to the public.
+ */
+ticketsRouter.post('/tickets/:id/cancel', requireAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: tRows } = await client.query(
+      `SELECT t.id, t.user_id, t.status, t.tier_id, t.event_id,
+              e.status AS event_status, e.starts_at
+       FROM tickets t JOIN events e ON e.id = t.event_id
+       WHERE t.id = $1
+       FOR UPDATE OF e`,
+      [req.params.id],
+    );
+    const ticket = tRows[0];
+    if (!ticket || Number(ticket.user_id) !== req.user.id) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    if (ticket.status !== 'valid') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `This ticket is ${ticket.status.replace('_', ' ')} and can't be cancelled` });
+    }
+    if (ticket.event_status !== 'published' || new Date(ticket.starts_at) <= new Date()) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Tickets can only be cancelled before the event starts' });
+    }
+
+    const { rowCount } = await client.query(
+      `UPDATE tickets SET status = 'cancelled' WHERE id = $1 AND status = 'valid'`,
+      [ticket.id],
+    );
+    if (rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Ticket was already updated' });
+    }
+
+    await passSeatToNextWaiter(client, Number(ticket.event_id), Number(ticket.tier_id));
+
+    await client.query('COMMIT');
+    const { rows } = await client.query(`${TICKET_SELECT} WHERE t.id = $1`, [ticket.id]);
+    return res.json({ ticket: ticketResponse(rows[0]) });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    // Express 4 does not catch async throws — respond here or crash the process.
+    console.error(err);
+    if (!res.headersSent) res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
 });
 
 /**
@@ -183,6 +159,12 @@ ticketsRouter.post('/checkin', requireAuth, requireOrganizer, async (req, res) =
   }
   if (existing[0].organizer_id !== req.user.id) {
     return res.status(403).json({ result: 'wrong_event', error: 'Ticket belongs to another organizer’s event' });
+  }
+  if (existing[0].status === 'cancelled' || existing[0].status === 'void') {
+    return res.status(409).json({
+      result: 'not_valid',
+      error: existing[0].status === 'cancelled' ? 'Ticket was cancelled by the attendee' : 'Ticket was voided (event cancelled)',
+    });
   }
   const info = await checkinInfo(code);
   return res.status(409).json({ result: 'already_checked_in', error: 'Ticket already checked in', ...info });

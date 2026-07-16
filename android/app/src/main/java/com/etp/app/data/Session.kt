@@ -64,6 +64,11 @@ class SessionManager(private val context: Context) {
         _state.value = SessionState.LoggedIn(auth.user)
     }
 
+    /** Swap in a fresh token + user (e.g. after a rename re-issues the JWT). */
+    suspend fun update(newToken: String, user: User) {
+        save(AuthResponse(newToken, user))
+    }
+
     suspend fun logout() {
         context.dataStore.edit { it.clear() }
         token = null

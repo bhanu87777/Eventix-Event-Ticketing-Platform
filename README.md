@@ -151,11 +151,14 @@ Expected result
 |--------|-----|--------------|
 | **Splash** | all | Brand-gradient splash while the saved JWT session loads. |
 | **Auth** | all | Sign-in / register toggle, role picker, password show/hide, inline validation, demo-account hint. |
-| **Discover / Home** | all | Search by title/venue, pull-to-refresh, live seats-left chips, price chips, cover images. |
-| **Event Detail** | all | Hero, availability bar, sticky price + idempotent Buy, success dialog. |
-| **Tickets Wallet** | attendee | On-device signed QR cards, VALID / USED chips, empty state. |
+| **Discover / Home** | all | Search, category filter chips, favorites filter, sort (date/price), infinite scroll, pull-to-refresh, live seats-left chips, heart-to-favorite, notification bell + profile avatar. |
+| **Event Detail** | all | Hero, availability bar, ticket-tier picker (GA/VIP/…), quantity stepper, favorite/share/add-to-calendar, waitlist join + claim banner, organizer "Manage event" entry. |
+| **Checkout** | attendee | Order summary with live promo-code preview, simulated payment sheet (4242 success · 0002 decline · 9999 timeout), race-safe confirm. |
+| **Tickets Wallet** | attendee | Ticket cards with tier + status chips (valid/used/cancelled/void), cancel-ticket flow, offline cache banner; tap for a wallet-style full-screen QR with brightness boost. |
 | **Scanner** | organizer | CameraX + ML Kit scanning, in-flight guard, colored result cards, haptics. |
-| **Create Event** | organizer | Title, venue, date/time, price (₹), capacity, cover URL; publishes to the API. |
+| **Dashboard** | organizer | Per-event stats (sold, revenue, check-in rate), sales-by-day chart, tier fill bars, attendee search, CSV export via share sheet. |
+| **Create / Edit Event** | organizer | Shared form with category + multi-tier editor; edit notifies ticket holders; cancel event voids tickets. |
+| **Profile & Notifications** | all | Rename (JWT refresh), password change, System/Light/Dark theme, in-app notification center with unread badge. |
 
 > 🧭 **Role-based navigation:** attendees see Discover + Tickets; organizers additionally see Scan + Create — the bottom nav is built from the logged-in user's role.
 
@@ -282,11 +285,11 @@ Eventix-Event-Ticketing-Platform/
 
 ## 🔭 Future Improvements
 
-- [ ] **Real payments** — Stripe / Razorpay with a payment-intent before ticket issuance
+- [x] **Simulated checkout** — order → mock payment sheet (success/decline/timeout test cards) → atomic ticket issuance; real Stripe/Razorpay still open
 - [ ] **iOS app** — a SwiftUI client against the same API
-- [ ] **Organizer analytics** — sales over time, check-in rate, revenue per event
-- [ ] **Waitlist & resale** — auto-offer freed seats when a ticket is refunded
-- [ ] **Push notifications** — event reminders and "back in stock" alerts (FCM)
+- [x] **Organizer analytics** — per-event dashboard: sales by day, check-in rate, revenue, tier fill, attendee search + CSV export
+- [x] **Waitlist** — freed seats are held and auto-offered down the line (24h claim windows, no cron); paid resale still open
+- [ ] **Push notifications** — FCM delivery (an in-app notification center already exists)
 - [ ] **Seat maps** — reserved seating for venues, not just general admission
 - [ ] **Hilt DI + UI tests** — swap manual DI for Hilt; add Compose UI + backend integration tests
 

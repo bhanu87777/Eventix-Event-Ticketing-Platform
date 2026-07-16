@@ -11,13 +11,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -106,5 +115,118 @@ fun Chip(text: String, container: Color = MaterialTheme.colorScheme.surfaceVaria
             color = content,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
         )
+    }
+}
+
+/** − / count / + stepper used by the checkout quantity picker. */
+@Composable
+fun QuantityStepper(value: Int, onChange: (Int) -> Unit, min: Int = 1, max: Int = 10) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedIconButton(onClick = { onChange(value - 1) }, enabled = value > min) {
+            Icon(Icons.Outlined.Remove, contentDescription = "Fewer tickets")
+        }
+        Text(
+            "$value",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
+        OutlinedIconButton(onClick = { onChange(value + 1) }, enabled = value < max) {
+            Icon(Icons.Outlined.Add, contentDescription = "More tickets")
+        }
+    }
+}
+
+/** Dashboard stat tile: small label over a big value. */
+@Composable
+fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+/** Confirmation dialog for destructive/irreversible actions. */
+@Composable
+fun ConfirmDialog(
+    title: String,
+    body: String,
+    confirmLabel: String,
+    destructive: Boolean = false,
+    busy: Boolean = false,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(title) },
+        text = { Text(body) },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !busy) {
+                Text(
+                    if (busy) "Working…" else confirmLabel,
+                    color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !busy) { Text("Keep it") }
+        },
+    )
+}
+
+/**
+ * Shared screen header: title on the left; notification bell (with unread
+ * badge) and avatar-initials button on the right.
+ */
+@Composable
+fun AppHeader(
+    title: String,
+    userName: String,
+    unreadCount: Int,
+    onBell: () -> Unit,
+    onAvatar: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+        IconButton(onClick = onBell) {
+            BadgedBox(
+                badge = {
+                    if (unreadCount > 0) {
+                        Badge { Text(if (unreadCount > 99) "99+" else "$unreadCount") }
+                    }
+                },
+            ) {
+                Icon(Icons.Outlined.Notifications, contentDescription = "Notifications")
+            }
+        }
+        Surface(
+            onClick = onAvatar,
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.padding(start = 4.dp).size(36.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    userName.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString(""),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
     }
 }
